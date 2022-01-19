@@ -7,22 +7,28 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/dghubble/sling"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	defaultBaseDir = "/home/estesp/images"
-	indexTmpl      = "/home/estesp/images/index.html.tmpl"
+	defaultBaseDir  = "/home/estesp/images"
+	indexTmpl       = "/home/estesp/images/index.html.tmpl"
+	cronitorKeyFile = ".cronitorid"
+	cronitorURL     = "https://cronitor.link/p/"
+	cronitorPing    = "onimage-service"
 )
 
 var (
 	tmpl          = template.Must(template.ParseFiles(indexTmpl))
 	awscpIndexCmd = []string{"aws", "s3", "cp", "SOMEFILE", "s3://kwcamlive/index.html", "--acl", "public-read",
 		"--content-type", "text/html", "--metadata-directive", "REPLACE", "--expires"}
+	cronitorAcct  = ""
 )
 
 type ProcessingService struct {
@@ -30,7 +36,17 @@ type ProcessingService struct {
 	sunrise    int64
 	sunset     int64
 	imgBaseDir string
+	errCnt     int64
 	watcher    *fsnotify.Watcher
+}
+
+func init() {
+	// read the cronitor app secret from the specified file
+	b, err := ioutil.ReadFile(cronitorKeyFile)
+	if err != nil {
+		logrus.Fatalf("Unable to read cronitor app key from file: %v", err)
+	}
+	cronitorAcct = strings.TrimSuffix(string(b), "\n")
 }
 
 func NewProcessingService() (*ProcessingService, error) {
@@ -67,6 +83,7 @@ func NewProcessingService() (*ProcessingService, error) {
 	go service.WatchDate()
 
 	go service.StartWebHandler()
+	go service.StartCronitorPing()
 	return service, nil
 }
 
@@ -113,6 +130,34 @@ type PageData struct {
 	Sunset  string
 }
 
+type cparams struct {
+    Metric string `url:"metric,omitempty"`
+}
+
+func (p *ProcessingService) StartCronitorPing() {
+	client := http.DefaultClient
+	urlBase := fmt.Sprintf("%s%s/%s", cronitorURL, cronitorAcct, cronitorPing)
+	t := time.NewTicker(1 * time.Minute)
+	for {
+		select {
+		case <-t.C:
+			metricStr := fmt.Sprintf("errCount:%d", p.errCnt)
+			params := &cparams{Metric: metricStr}
+			req, err := sling.New().Get(urlBase).QueryStruct(params).Request()
+			if err != nil {
+				p.errCnt++
+				logrus.Errorf("failed creating sling URL: %v", err)
+				continue
+			}
+			_, err = client.Do(req)
+			if err != nil {
+				p.errCnt++
+				logrus.Errorf("failed to ping cronitor: %v", err)
+			}
+		}
+	}
+}
+
 func (p *ProcessingService) WatchDate() {
 	t := time.NewTicker(15 * time.Minute)
 	for {
@@ -120,25 +165,31 @@ func (p *ProcessingService) WatchDate() {
 		case <-t.C:
 			today := getDate()
 			if today != p.GetDate() {
+				p.errCnt = 0
 				if err := p.watcher.Remove(p.GetImageDir()); err != nil {
+					p.errCnt++
 					logrus.Errorf("error removing current watched dir %s: %v", p.GetDate(), err)
 				}
 				p.SetDate(today)
 				logrus.Infof("changing current watch folder to: %s\n", p.GetDate())
 				if err := os.Mkdir(p.GetImageDir(), os.FileMode(0755)); err != nil {
 					if !os.IsExist(err) {
+						p.errCnt++
 						logrus.Errorf("error creating dir %s: %v", p.GetImageDir(), err)
 					}
 				}
 				if err := p.watcher.Add(p.GetImageDir()); err != nil {
+					p.errCnt++
 					logrus.Errorf("error adding new watched dir %s: %v", p.GetDate(), err)
 				}
 				w, err := getWeather()
 				if err != nil {
+					p.errCnt++
 					logrus.Errorf("error retrieving sunrise/sunset for new day: %v", err)
 				} else {
 					p.SetSunTimes(w.Sys.Sunrise, w.Sys.Sunset)
 					if err := p.SetTodayPage(); err != nil {
+						p.errCnt++
 						logrus.Errorf("unable to setup index.html for new day: %v", err)
 					}
 				}
