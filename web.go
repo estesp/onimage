@@ -27,6 +27,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if now.Unix() >= sunrisePre && now.Unix() <= sunsetPost {
 		resp = 1
 	}
+	// since sometimes the light lingers longer than 30 min after sunset
+	// use the color profile of the last photo to extend photo hours as
+	// necessary
+	if now.Unix() > sunsetPost && p.GetLastDarkPercent() < 95.0 {
+		logrus.Infof("Extending photo hours; still some light (%f) at %v", p.GetLastDarkPercent(), now)
+		resp = 1
+	}
 	riseTime := time.Unix(p.GetSunrise(), 0)
 	setTime := time.Unix(p.GetSunset(), 0)
 	sresp := suntimez{

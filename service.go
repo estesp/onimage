@@ -28,7 +28,7 @@ var (
 	tmpl          = template.Must(template.ParseFiles(indexTmpl))
 	awscpIndexCmd = []string{"aws", "s3", "cp", "SOMEFILE", "s3://kwcamlive/index.html", "--acl", "public-read",
 		"--content-type", "text/html", "--metadata-directive", "REPLACE", "--expires"}
-	cronitorAcct  = ""
+	cronitorAcct = ""
 )
 
 type ProcessingService struct {
@@ -37,6 +37,7 @@ type ProcessingService struct {
 	sunset     int64
 	imgBaseDir string
 	errCnt     int64
+	lastDark   float32
 	watcher    *fsnotify.Watcher
 }
 
@@ -53,6 +54,7 @@ func NewProcessingService() (*ProcessingService, error) {
 	service := &ProcessingService{
 		curDate:    getDate(),
 		imgBaseDir: defaultBaseDir,
+		lastDark:   100.0,
 	}
 	w, err := getWeather()
 	if err != nil {
@@ -108,6 +110,14 @@ func (p *ProcessingService) GetSunset() int64 {
 	return p.sunset
 }
 
+func (p *ProcessingService) GetLastDarkPercent() float32 {
+	return p.lastDark
+}
+
+func (p *ProcessingService) SetLastDarkPercent(percent float32) {
+	p.lastDark = percent
+}
+
 func (p *ProcessingService) GetImageDir() string {
 	return fmt.Sprintf("%s/%s", p.imgBaseDir, p.curDate)
 }
@@ -131,7 +141,7 @@ type PageData struct {
 }
 
 type cparams struct {
-    Metric string `url:"metric,omitempty"`
+	Metric string `url:"metric,omitempty"`
 }
 
 func (p *ProcessingService) StartCronitorPing() {
@@ -141,7 +151,7 @@ func (p *ProcessingService) StartCronitorPing() {
 	for {
 		select {
 		case <-t.C:
-			metricStr := fmt.Sprintf("errCount:%d", p.errCnt)
+			metricStr := fmt.Sprintf("error_count:%d", p.errCnt)
 			params := &cparams{Metric: metricStr}
 			req, err := sling.New().Get(urlBase).QueryStruct(params).Request()
 			if err != nil {

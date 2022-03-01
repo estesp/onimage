@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os/exec"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +19,14 @@ const (
 	photoFreq = 3
 )
 
+type ColorJson struct {
+	BlackPercent float32 `json:"black_percent"`
+	Colors       []struct {
+		Color   []float32 `json:"color"`
+		Percent float32   `json:"percent"`
+	} `json:"colors"`
+}
+
 var (
 	replaceNNNN = regexp.MustCompile(`NNNN`)
 	enfuseCmd   = []string{"enfuse", "-o", "prefinal.jpg", "01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg"}
@@ -25,6 +36,7 @@ var (
 		"-draw", "gravity south fill white text 0,20 'kwcam.live' ", "final.jpg"}
 	awscpCmd = []string{"aws", "s3", "cp", "final.jpg", "s3://kwcamlive/latest.jpg", "--acl", "public-read",
 		"--metadata-directive", "REPLACE", "--expires"}
+	assessDarkCmd = []string{"docker", "run", "--rm", "-v", "NNNN:/mnt", "opencv2:latest", "/mnt/final.jpg"}
 )
 
 func main() {
@@ -39,11 +51,11 @@ func main() {
 	newDirs := pService.StartImageNotifier()
 	done := make(chan bool, 1)
 
-	processImages(newDirs)
+	processImages(pService, newDirs)
 	<-done
 }
 
-func processImages(newDirs chan string) {
+func processImages(pService *ProcessingService, newDirs chan string) {
 	for {
 		dir := <-newDirs
 		// create final image (enfuse)
@@ -52,6 +64,8 @@ func processImages(newDirs chan string) {
 		overlayImage(dir)
 		// copy latest to S3 bucket for kwcam.live
 		copyImagetoS3(dir)
+		// assess percent dark in image
+		assessDarkPercent(pService, dir)
 	}
 }
 
@@ -91,6 +105,27 @@ func copyImagetoS3(dir string) {
 		logrus.Errorf("Error calling aws cp on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
 	}
+}
+
+func assessDarkPercent(pService *ProcessingService, dir string) {
+	assessCmdCopy := make([]string, len(assessDarkCmd))
+	copy(assessCmdCopy, assessDarkCmd)
+	assessCmdCopy[4] = replaceNNNN.ReplaceAllLiteralString(assessCmdCopy[4], dir)
+	out, err := runCommand(dir, assessCmdCopy)
+	if err != nil {
+		logrus.Errorf("Error calling opencv2 container on %s: %v", dir, err)
+		logrus.Errorf("Full output: %s", out)
+		return
+	}
+	if err = ioutil.WriteFile(path.Join(dir, "colors.json"), []byte(out), 0644); err != nil {
+		logrus.Errorf("Error writing color JSON output to file: %v", err)
+	}
+	var colorJson ColorJson
+	if err = json.Unmarshal([]byte(out), &colorJson); err != nil {
+		logrus.Errorf("Error unmarshalling JSON to Go type: %v", err)
+		return
+	}
+	pService.SetLastDarkPercent(colorJson.BlackPercent)
 }
 
 func datetimeFromDir(dir string) string {
