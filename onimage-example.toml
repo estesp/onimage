@@ -1,0 +1,23 @@
+home_dir = "/home/estesp"
+
+[website]
+bucket = "kwcamlive"
+page_template = "/home/estesp/images/index.html.tmpl"
+offline_page = "/home/estesp/images/offline-index.html.tmpl"
+
+[cronitor]
+enabled = true
+appid = "12341234"
+base_url = "https://cronitor.link/p/"
+heartbeat_id = "onimage-service"
+environment = "kw-testing"
+
+[weather]
+base_url = "https://api.openweathermap.org/data/2.5/weather"
+appid = "134324"
+location_code = 4752031
+units = "imperial"
+
+[images]
+directory = "/home/estesp/images"
+photo_frequency = 3
