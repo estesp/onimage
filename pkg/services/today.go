@@ -194,5 +194,8 @@ func (t *Today) watchDate(notifier chan string, errors chan error) {
 			}
 		}
 	}
+}
 
+func (t *Today) GetHomeDirectory() string {
+	return t.homeDir
 }

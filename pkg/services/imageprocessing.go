@@ -42,7 +42,7 @@ var (
 		"-draw", "gravity southeast fill white text 20,20 'NNNN' ", "-pointsize", "28",
 		"-draw", "gravity south fill white text 0,20 'kwcam.live' ", "final.jpg"}
 
-	awscpCmd = []string{"aws", "s3", "cp", "final.jpg", "s3://kwcamlive/latest.jpg", "--acl", "public-read",
+	awscpCmd = []string{"aws", "s3", "cp", "SOMEFILE", "s3://kwcamlive/latest.jpg", "--acl", "public-read",
 		"--metadata-directive", "REPLACE", "--expires"}
 
 	assessDarkCmd = []string{"sudo", "ctr", "run", "--rm", "--mount", "type=bind,src=NNNN,dst=/mnt,options=rbind:ro",
@@ -128,8 +128,10 @@ func (ip *ImageProcessor) processImages() {
 		ip.overlayImage(dir)
 		// copy latest to S3 bucket for kwcam.live
 		ip.copyImagetoS3(dir)
-		// assess percent dark in image
-		ip.assessDarkPercent(dir)
+		// assess percent dark in image; run as goroutine since it can take 30s to run
+		// and only sets a data point in the today service to determine whether to continue
+		// taking photos after twilight
+		go ip.assessDarkPercent(dir)
 	}
 }
 
@@ -168,7 +170,8 @@ func (ip *ImageProcessor) overlayImage(dir string) {
 
 func (ip *ImageProcessor) copyImagetoS3(dir string) {
 	expiresTime := time.Now().Add(ip.frequency).UTC()
-	out, err := util.RunCommand(dir, append(awscpCmd, expiresTime.Format(http.TimeFormat)))
+	awscpCmd[3] = path.Join(dir, "final.jpg")
+	out, err := util.RunCommand(ip.todayService.GetHomeDirectory(), append(awscpCmd, expiresTime.Format(http.TimeFormat)))
 	if err != nil {
 		logrus.Errorf("Error calling aws cp on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
@@ -178,7 +181,7 @@ func (ip *ImageProcessor) copyImagetoS3(dir string) {
 func (ip *ImageProcessor) assessDarkPercent(dir string) {
 	assessCmdCopy := make([]string, len(assessDarkCmd))
 	copy(assessCmdCopy, assessDarkCmd)
-	assessCmdCopy[4] = replaceNNNN.ReplaceAllLiteralString(assessCmdCopy[4], dir)
+	assessCmdCopy[5] = replaceNNNN.ReplaceAllLiteralString(assessCmdCopy[5], dir)
 	out, err := util.RunCommand(dir, assessCmdCopy)
 	if err != nil {
 		logrus.Errorf("Error calling opencv2 container on %s: %v", dir, err)
