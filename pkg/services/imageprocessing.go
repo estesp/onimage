@@ -50,17 +50,17 @@ var (
 )
 
 func NewImageProcessingService(config map[string]interface{}, todayService *Today, weatherService *WeatherData) (*ImageProcessor, error) {
-	baseDir, ok := config["images.directory"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'images.directory'")
+	baseDir, err := util.GetStringFromConfig(config, "images.directory")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'images.directory' from config: %w", err)
 	}
-	freq, ok := config["images.photo_frequency"].(int)
-	if !ok {
-		return nil, fmt.Errorf("config file has no int entry for 'images.photo_frequency'")
+	freq, err := util.GetIntFromConfig(config, "images.photo_frequency")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'images.photo_frequency' from config: %w", err)
 	}
-	s3bucketName, ok := config["website.bucket"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'website.bucket'")
+	s3bucketName, err := util.GetStringFromConfig(config, "website.bucket")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'website.bucket' from config: %w", err)
 	}
 	return &ImageProcessor{
 		todayService:   todayService,

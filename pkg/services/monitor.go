@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dghubble/sling"
+	"github.com/estesp/onimage/pkg/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,40 +31,34 @@ type fparams struct {
 
 func NewMonitorService(config map[string]interface{}) (*Monitor, error) {
 
-	enabled, ok := config["cronitor.enabled"].(bool)
-	if !ok {
-		return nil, fmt.Errorf("config file has no boolean entry for 'cronitor.enabled'")
+	enabled, err := util.GetBoolFromConfig(config, "cronitor.enabled")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'cronitor.enabled' from config: %w", err)
 	}
 	if !enabled {
 		return &Monitor{}, nil
 	}
 
-	baseUrl, ok := config["cronitor.base_url"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'cronitor.base_url'")
+	baseUrl, err := util.GetStringFromConfig(config, "cronitor.base_url")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'cronitor.base_url' from config: %w", err)
 	}
-	appId, ok := config["cronitor.appid"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'cronitor.appid'")
+	appId, err := util.GetStringFromConfig(config, "cronitor.appid")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'cronitor.appid' from config: %w", err)
 	}
-	cronitorId, ok := config["cronitor.heartbeat_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'cronitor.heartbeat_id'")
+	cronitorId, err := util.GetStringFromConfig(config, "cronitor.heartbeat_id")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'cronitor.heartbeat_id' from config: %w", err)
 	}
-	var envStr string
-	env, ok := config["cronitor.environment"]
-	if ok {
-		envStr, ok = env.(string)
-		if !ok {
-			return nil, fmt.Errorf("config file entry for 'cronitor.environment' must be a string")
-		}
-	}
+	// we can ignore any errors as this is not a required field for the configuration
+	env, _ := util.GetStringFromConfig(config, "cronitor.environment")
 
 	mon := &Monitor{
 		cronitorURL: baseUrl,
 		cronitorKey: appId,
 		cronitorId:  cronitorId,
-		environment: envStr,
+		environment: env,
 	}
 
 	return mon, nil

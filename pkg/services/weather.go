@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dghubble/sling"
+	"github.com/estesp/onimage/pkg/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -60,25 +61,25 @@ type Weather struct {
 }
 
 func NewWeatherDataService(config map[string]interface{}) (*WeatherData, error) {
-	baseUrl, ok := config["weather.base_url"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'weather.base_url'")
+	baseUrl, err := util.GetStringFromConfig(config, "weather.base_url")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'weather.base_url' from config: %w", err)
 	}
-	locationId, ok := config["weather.location_code"].(int)
-	if !ok {
-		return nil, fmt.Errorf("config file has no integer entry for 'weather.location_code'")
+	locationId, err := util.GetIntFromConfig(config, "weather.location_code")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'weather.location_code' from config: %w", err)
 	}
-	appId, ok := config["weather.appid"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'weather.appid'")
+	appId, err := util.GetStringFromConfig(config, "weather.appid")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'weather.appid' from config: %w", err)
 	}
-	units, ok := config["weather.units"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'weather.units'")
+	units, err := util.GetStringFromConfig(config, "weather.units")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve 'weather.units' from config: %w", err)
 	}
 	return &WeatherData{
 		appId:      appId,
-		locationId: locationId,
+		locationId: int(locationId),
 		baseURL:    baseUrl,
 		units:      units,
 	}, nil

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/estesp/onimage/pkg/util"
@@ -44,21 +45,21 @@ func NewTodayService(wdService *WeatherData, config map[string]interface{}) (*To
 
 	dateStr := util.GetDateString()
 
-	pageTmpl, ok := config["website.page_template"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'website.page_template'")
+	pageTmpl, err := util.GetStringFromConfig(config, "website.page_template")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'website.page_template' from config: %w", err)
 	}
-	offlinePageTmpl, ok := config["website.offline_page"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'website.offline_page'")
+	offlinePageTmpl, err := util.GetStringFromConfig(config, "website.offline_page")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'website.offline_page' from config: %w", err)
 	}
-	s3bucketName, ok := config["website.bucket"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'website.bucket'")
+	s3bucketName, err := util.GetStringFromConfig(config, "website.bucket")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'website.bucket' from config: %w", err)
 	}
-	homeDir, ok := config["home_dir"].(string)
-	if !ok {
-		return nil, fmt.Errorf("config file has no string entry for 'home_dir'")
+	homeDir, err := util.GetStringFromConfig(config, "home_dir")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'home_dir' from config: %w", err)
 	}
 	today := &Today{
 		homeDir:             homeDir,
@@ -71,7 +72,7 @@ func NewTodayService(wdService *WeatherData, config map[string]interface{}) (*To
 		offlinePageTemplate: offlinePageTmpl,
 	}
 
-	awscpCmd[4] = fmt.Sprintf("s3://%s/index.html", s3bucketName)
+	awscpIndexCmd[4] = fmt.Sprintf("s3://%s/index.html", s3bucketName)
 
 	weather, err := wdService.GetCurrentWeather()
 	if err != nil {
@@ -144,7 +145,8 @@ func (t *Today) SetTodayPage() error {
 	out, err := util.RunCommand(t.homeDir, append(awscpIndexCmd, expires))
 	if err != nil {
 		logrus.Errorf("Error calling 'aws cp' from tmp file %s to S3: %v", tmpFile.Name(), err)
-		logrus.Errorf("Full output: %s", out)
+		logrus.Errorf(">      Command: %s", strings.Join(awscpIndexCmd, " "))
+		logrus.Errorf(">  Full output: %s", out)
 	}
 	os.Remove(tmpFile.Name())
 	return err
@@ -178,7 +180,6 @@ func (t *Today) watchDate(notifier chan string, errors chan error) {
 				t.dateStr = today
 				w, err := t.weatherService.GetCurrentWeather()
 				if err != nil {
-					// send failure to cronitor?
 					logrus.Errorf("error retrieving sunrise/sunset for new day: %v", err)
 					errors <- err
 				} else {
