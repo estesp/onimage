@@ -59,6 +59,7 @@ func NewMonitorService(config map[string]interface{}) (*Monitor, error) {
 		cronitorKey: appId,
 		cronitorId:  cronitorId,
 		environment: env,
+		enabled:     true,
 	}
 
 	return mon, nil
