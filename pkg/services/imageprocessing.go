@@ -18,6 +18,7 @@ import (
 type ImageProcessor struct {
 	imagesBaseDir  string
 	s3bucket       string
+	siteText       string
 	frequency      time.Duration
 	todayService   *Today
 	weatherService *WeatherData
@@ -40,9 +41,9 @@ var (
 	overlayCmd = []string{"convert", "prefinal.jpg", "-pointsize", "36",
 		"-draw", "gravity southwest fill white text 20,20 'NNNN' ",
 		"-draw", "gravity southeast fill white text 20,20 'NNNN' ", "-pointsize", "28",
-		"-draw", "gravity south fill white text 0,20 'kwcam.live' ", "final.jpg"}
+		"-draw", "gravity south fill white text 0,20 'NNNN' ", "final.jpg"}
 
-	awscpCmd = []string{"aws", "s3", "cp", "SOMEFILE", "s3://kwcamlive/latest.jpg", "--acl", "public-read",
+	awscpCmd = []string{"aws", "s3", "cp", "SOMEFILE", "BUCKETNAME", "--acl", "public-read",
 		"--metadata-directive", "REPLACE", "--expires"}
 
 	assessDarkCmd = []string{"sudo", "ctr", "run", "--rm", "--mount", "type=bind,src=NNNN,dst=/mnt,options=rbind:ro",
@@ -54,6 +55,10 @@ func NewImageProcessingService(config map[string]interface{}, todayService *Toda
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'images.directory' from config: %w", err)
 	}
+	siteText, err := util.GetStringFromConfig(config, "images.site_text")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'images.site_text' from config: %w", err)
+	}
 	freq, err := util.GetIntFromConfig(config, "images.photo_frequency")
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'images.photo_frequency' from config: %w", err)
@@ -62,10 +67,16 @@ func NewImageProcessingService(config map[string]interface{}, todayService *Toda
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'website.bucket' from config: %w", err)
 	}
+
+	// set up the proper bucket based on the config settings
+	awscpCmd[4] = fmt.Sprintf("s3://%s/latest.jpg", s3bucketName)
+	overlayCmd[11] = replaceNNNN.ReplaceAllLiteralString(overlayCmd[11], siteText)
+
 	return &ImageProcessor{
 		todayService:   todayService,
 		weatherService: weatherService,
 		imagesBaseDir:  baseDir,
+		siteText:       siteText,
 		frequency:      time.Duration(freq) * time.Minute,
 		s3bucket:       s3bucketName,
 	}, nil

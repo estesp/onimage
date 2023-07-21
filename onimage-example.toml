@@ -20,4 +20,5 @@ units = "imperial"
 
 [images]
 directory = "/home/estesp/images"
+site_text = "kwcam.live"
 photo_frequency = 3
