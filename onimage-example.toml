@@ -1,23 +1,54 @@
+# This is the TOML example config for the "OnImage()" webcam image processor
+
+# Set home_dir to a directory which will be the working dir of shelled out
+# commands; for example, AWS credentials should be located under this directory
+# for aws client commands to work properly
 home_dir = "/home/estesp"
 
+# The [website] section has the name of the Amazon S3 bucket and Go text
+# templates for the online and offline versions of the web page stored at
+# that publically readable bucket
 [website]
 bucket = "kwcamlive"
 page_template = "/home/estesp/images/index.html.tmpl"
 offline_page = "/home/estesp/images/offline-index.html.tmpl"
 
+# The [cronitor] section has settings related to the optional use of the
+# monitoring service from Cronitor.io. If you do not wish to have SaaS
+# monitoring from Cronitor.io, you can simply put "enabled = false" as
+# the only setting in this section.
 [cronitor]
 enabled = true
+# your cronitor provided application key for your monitors
 appid = "12341234"
+# this URL should be correct, but verify on the monitoring page
 base_url = "https://cronitor.link/p/"
+# the name of the monitor you will use to send heartbeats
 heartbeat_id = "onimage-service"
+# [OPTIONAL] environment string; if you use Cronitor's multi-environment settings
 environment = "kw-testing"
 
+# The [weather] section holds configuration for OpenWeatherMap's Weather
+# data API. The location code for your specific city/town/region can be
+# found on their documentation site. You need to create a (free) account
+# and get an application key to place in "appid" below. Location code and
+# unit selection are up to your preference
 [weather]
 base_url = "https://api.openweathermap.org/data/2.5/weather"
 appid = "134324"
 location_code = 4752031
 units = "imperial"
 
+# The [images] section is used to provide a few important details for
+# the image processing service. First, specify the *directory* into which
+# date-segregated webcam photos will be placed (most likely by an external
+# cron job that operates the camera on a fixed schedule). The image
+# processor will overlay a footer with the *site_text* of your choice;
+# maybe the URL to your webcame? The *photo_frequency* setting specifies
+# the number of minutes between each photo and needs to be in sync with
+# your cron job/external camera controlling software frequency. This is
+# used to set the HTTP cache/expires metadata to force your webpage to 
+# reflect (and auto-update) to the latest image every X minutes.
 [images]
 directory = "/home/estesp/images"
 site_text = "kwcam.live"
