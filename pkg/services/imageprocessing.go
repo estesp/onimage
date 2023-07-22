@@ -19,6 +19,7 @@ type ImageProcessor struct {
 	imagesBaseDir  string
 	s3bucket       string
 	siteText       string
+	runtime        string
 	frequency      time.Duration
 	todayService   *Today
 	weatherService *WeatherData
@@ -49,6 +50,7 @@ var (
 
 	assessDarkCmd = []string{"sudo", "ctr", "run", "--rm", "--mount", "type=bind,src=NNNN,dst=/mnt,options=rbind:ro",
 		"docker.io/estesp/opencv2:4.8.0", "ocv2", "python", "color_percents.py", "/mnt/final.jpg"}
+	assessDarkCmdDocker = []string{"docker", "run", "--rm", "-v", "NNNN:/mnt", "estesp/opencv2:4.8.0", "/mnt/final.jpg"}
 )
 
 func NewImageProcessingService(config map[string]interface{}, errChan chan error, todayService *Today, weatherService *WeatherData) (*ImageProcessor, error) {
@@ -59,6 +61,12 @@ func NewImageProcessingService(config map[string]interface{}, errChan chan error
 	siteText, err := util.GetStringFromConfig(config, "images.site_text")
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'images.site_text' from config: %w", err)
+	}
+	runtime, err := util.GetStringFromConfig(config, "images.runtime")
+	if err != nil {
+		// default to Docker if the entry doesn't exist
+		logrus.Warnf("No 'images.runtime' entry in config or incorrect value; defaulting to Docker runtime")
+		runtime = "docker"
 	}
 	freq, err := util.GetIntFromConfig(config, "images.photo_frequency")
 	if err != nil {
@@ -81,6 +89,7 @@ func NewImageProcessingService(config map[string]interface{}, errChan chan error
 		frequency:      time.Duration(freq) * time.Minute,
 		s3bucket:       s3bucketName,
 		errChan:        errChan,
+		runtime:        runtime,
 	}, nil
 }
 
@@ -201,9 +210,17 @@ func (ip *ImageProcessor) copyImagetoS3(dir string) {
 }
 
 func (ip *ImageProcessor) assessDarkPercent(dir string) {
-	assessCmdCopy := make([]string, len(assessDarkCmd))
-	copy(assessCmdCopy, assessDarkCmd)
-	assessCmdCopy[5] = replaceNNNN.ReplaceAllLiteralString(assessCmdCopy[5], dir)
+	var assessCmdCopy []string
+	switch ip.runtime {
+	case "docker":
+		assessCmdCopy = getDockerCmd(dir)
+	case "containerd":
+		assessCmdCopy = getContainerdCmd(dir)
+	default:
+		logrus.Warnf("Unknown container runtime value in config: %s; defaulting to Docker", ip.runtime)
+		assessCmdCopy = getDockerCmd(dir)
+	}
+
 	out, err := util.RunCommand(dir, assessCmdCopy)
 	if err != nil {
 		ip.errChan <- err
@@ -276,4 +293,18 @@ func pollDoneFile(fname string, c chan []struct{}) {
 		}
 		time.Sleep(1 * time.Second)
 	}
+}
+
+func getDockerCmd(dir string) []string {
+	cmdArray := make([]string, len(assessDarkCmdDocker))
+	copy(cmdArray, assessDarkCmdDocker)
+	cmdArray[4] = replaceNNNN.ReplaceAllLiteralString(cmdArray[4], dir)
+	return cmdArray
+}
+
+func getContainerdCmd(dir string) []string {
+	cmdArray := make([]string, len(assessDarkCmd))
+	copy(cmdArray, assessDarkCmd)
+	cmdArray[5] = replaceNNNN.ReplaceAllLiteralString(cmdArray[5], dir)
+	return cmdArray
 }

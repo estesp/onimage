@@ -53,3 +53,8 @@ units = "imperial"
 directory = "/home/estesp/images"
 site_text = "kwcam.live"
 photo_frequency = 3
+# Set the container runtime that will be used to run the opencv2 model
+# to calculate percent of color content/dark percent in the image
+# The code supports values of "docker" and "containerd" so far
+runtime = "docker"
+
