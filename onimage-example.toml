@@ -57,4 +57,9 @@ photo_frequency = 3
 # to calculate percent of color content/dark percent in the image
 # The code supports values of "docker" and "containerd" so far
 runtime = "docker"
+# Specify the container image reference that has OpenCV2 and the
+# color_percents.py Python script; the following public image on
+# DockerHub is available and the Dockerfile and content are in the
+# onimage GitHub repository
+opencv2_image = "docker.io/estesp/opencv2:4.8.0"
 

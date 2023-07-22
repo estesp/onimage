@@ -20,6 +20,7 @@ type ImageProcessor struct {
 	s3bucket       string
 	siteText       string
 	runtime        string
+	opencv2Image   string
 	frequency      time.Duration
 	todayService   *Today
 	weatherService *WeatherData
@@ -76,6 +77,10 @@ func NewImageProcessingService(config map[string]interface{}, errChan chan error
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'website.bucket' from config: %w", err)
 	}
+	opencv2ImgRef, err := util.GetStringFromConfig(config, "images.opencv2_image")
+	if err != nil {
+		return nil, fmt.Errorf("can't retrieve entry 'images.opencv2_image' from config: %w", err)
+	}
 
 	// set up the proper bucket based on the config settings
 	awscpCmd[4] = fmt.Sprintf("s3://%s/latest.jpg", s3bucketName)
@@ -90,6 +95,7 @@ func NewImageProcessingService(config map[string]interface{}, errChan chan error
 		s3bucket:       s3bucketName,
 		errChan:        errChan,
 		runtime:        runtime,
+		opencv2Image:   opencv2ImgRef,
 	}, nil
 }
 
@@ -213,12 +219,12 @@ func (ip *ImageProcessor) assessDarkPercent(dir string) {
 	var assessCmdCopy []string
 	switch ip.runtime {
 	case "docker":
-		assessCmdCopy = getDockerCmd(dir)
+		assessCmdCopy = getDockerCmd(dir, ip.opencv2Image)
 	case "containerd":
-		assessCmdCopy = getContainerdCmd(dir)
+		assessCmdCopy = getContainerdCmd(dir, ip.opencv2Image)
 	default:
 		logrus.Warnf("Unknown container runtime value in config: %s; defaulting to Docker", ip.runtime)
-		assessCmdCopy = getDockerCmd(dir)
+		assessCmdCopy = getDockerCmd(dir, ip.opencv2Image)
 	}
 
 	out, err := util.RunCommand(dir, assessCmdCopy)
@@ -295,16 +301,18 @@ func pollDoneFile(fname string, c chan []struct{}) {
 	}
 }
 
-func getDockerCmd(dir string) []string {
+func getDockerCmd(dir, imageRef string) []string {
 	cmdArray := make([]string, len(assessDarkCmdDocker))
 	copy(cmdArray, assessDarkCmdDocker)
 	cmdArray[4] = replaceNNNN.ReplaceAllLiteralString(cmdArray[4], dir)
+	cmdArray[5] = imageRef
 	return cmdArray
 }
 
-func getContainerdCmd(dir string) []string {
+func getContainerdCmd(dir, imageRef string) []string {
 	cmdArray := make([]string, len(assessDarkCmd))
 	copy(cmdArray, assessDarkCmd)
 	cmdArray[5] = replaceNNNN.ReplaceAllLiteralString(cmdArray[5], dir)
+	cmdArray[6] = imageRef
 	return cmdArray
 }
