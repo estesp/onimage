@@ -17,6 +17,7 @@ type Monitor struct {
 	cronitorId  string
 	environment string
 	errChan     chan error
+	errCnt      uint
 }
 
 type cparams struct {
@@ -88,7 +89,8 @@ func (m *Monitor) sendHeartbeat() error {
 	client := http.DefaultClient
 	urlBase := fmt.Sprintf("%s%s/%s", m.cronitorURL, m.cronitorKey, m.cronitorId)
 
-	metricStr := fmt.Sprintf("error_count:%d", 0)
+	metricStr := fmt.Sprintf("error_count:%d", m.errCnt)
+	m.errCnt = 0
 	params := &cparams{Metric: metricStr}
 	if m.environment != "" {
 		params.Environment = m.environment
@@ -108,6 +110,8 @@ func (m *Monitor) SendFailure(msg string) error {
 	if !m.enabled {
 		return nil
 	}
+	// # of errors will be reported during each heartbeat ping
+	m.errCnt++
 
 	client := http.DefaultClient
 	urlBase := fmt.Sprintf("%s%s/%s", m.cronitorURL, m.cronitorKey, m.cronitorId)
