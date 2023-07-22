@@ -13,6 +13,10 @@ func main() {
 	// TODO: Make logging level configurable
 	logrus.SetLevel(logrus.InfoLevel)
 
+	// channel for errors passed to each service; errors written
+	// to this channel will be reported to the monitor service, if enabled
+	errChan := make(chan error)
+
 	// Read in config; looks for current working directory "onimage.toml" or
 	// looks for "/etc/onimage/onimage.toml"
 	viper.SetConfigName("onimage")
@@ -25,7 +29,7 @@ func main() {
 	config := viper.AllSettings()
 
 	// create monitor service
-	monitorService, err := services.NewMonitorService(config)
+	monitorService, err := services.NewMonitorService(config, errChan)
 	if err != nil {
 		logrus.Fatalf("unable to initialize monitoring service: %v", err)
 	}
@@ -33,23 +37,20 @@ func main() {
 	go monitorService.StartCronitorPing()
 
 	// create weather service
-	weatherService, err := services.NewWeatherDataService(config)
+	weatherService, err := services.NewWeatherDataService(config, errChan)
 	if err != nil {
 		logrus.Fatalf("unable to initialize weather data service: %v", err)
 	}
 
 	// create "today" service which handles storing sunrise/sunset and current date
 	// as well as updating the S3 bucket's "index.html" with today's data
-	todayService, err := services.NewTodayService(weatherService, config)
+	todayService, err := services.NewTodayService(weatherService, config, errChan)
 	if err != nil {
 		logrus.Fatalf("unable to initialize 'today' service: %v", err)
 	}
 
 	todayService.SetTodayPage()
-	dateNotifier, errChan := todayService.WatchDate()
-
-	// handle errors thrown from the today service; will be reported to cronitor
-	go errorHandler(errChan, monitorService)
+	dateNotifier := todayService.WatchDate()
 
 	// start the web endpoint service which is called from cron entry
 	// scripts that take the photos; used to determine whether to take
@@ -62,7 +63,7 @@ func main() {
 
 	// create the image processor service which will handle the bulk of
 	// processing of each captured webcam image
-	imageProcessor, err := services.NewImageProcessingService(config, todayService, weatherService)
+	imageProcessor, err := services.NewImageProcessingService(config, errChan, todayService, weatherService)
 	if err != nil {
 		logrus.Fatalf("unable to initialize image processing service: %v", err)
 	}
@@ -74,8 +75,8 @@ func main() {
 
 	logrus.Infof("OnImage() Processing started successfully; watching: %s\n", todayService.GetDate())
 
-	done := make(chan bool, 1)
-	<-done
+	// this will wait forever, listening for errors
+	errorHandler(errChan, monitorService)
 }
 
 func errorHandler(errors chan error, monitor *services.Monitor) {

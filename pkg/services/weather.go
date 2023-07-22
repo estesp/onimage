@@ -18,6 +18,7 @@ type WeatherData struct {
 	locationId int
 	baseURL    string
 	units      string
+	errChan    chan error
 }
 
 type Params struct {
@@ -60,7 +61,7 @@ type Weather struct {
 	Wind        WindSection   `json:"wind"`
 }
 
-func NewWeatherDataService(config map[string]interface{}) (*WeatherData, error) {
+func NewWeatherDataService(config map[string]interface{}, errChan chan error) (*WeatherData, error) {
 	baseUrl, err := util.GetStringFromConfig(config, "weather.base_url")
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve 'weather.base_url' from config: %w", err)
@@ -82,6 +83,7 @@ func NewWeatherDataService(config map[string]interface{}) (*WeatherData, error) 
 		locationId: int(locationId),
 		baseURL:    baseUrl,
 		units:      units,
+		errChan:    errChan,
 	}, nil
 }
 

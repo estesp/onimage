@@ -23,6 +23,7 @@ type ImageProcessor struct {
 	todayService   *Today
 	weatherService *WeatherData
 	watcher        *fsnotify.Watcher
+	errChan        chan error
 }
 
 type ColorJson struct {
@@ -50,7 +51,7 @@ var (
 		"docker.io/estesp/opencv2:4.8.0", "ocv2", "python", "color_percents.py", "/mnt/final.jpg"}
 )
 
-func NewImageProcessingService(config map[string]interface{}, todayService *Today, weatherService *WeatherData) (*ImageProcessor, error) {
+func NewImageProcessingService(config map[string]interface{}, errChan chan error, todayService *Today, weatherService *WeatherData) (*ImageProcessor, error) {
 	baseDir, err := util.GetStringFromConfig(config, "images.directory")
 	if err != nil {
 		return nil, fmt.Errorf("can't retrieve entry 'images.directory' from config: %w", err)
@@ -79,6 +80,7 @@ func NewImageProcessingService(config map[string]interface{}, todayService *Toda
 		siteText:       siteText,
 		frequency:      time.Duration(freq) * time.Minute,
 		s3bucket:       s3bucketName,
+		errChan:        errChan,
 	}, nil
 }
 
@@ -89,15 +91,18 @@ func (ip *ImageProcessor) DateChangeNotifier(notifier chan string) {
 func (ip *ImageProcessor) StartImageHandler() {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
+		ip.errChan <- err
 		logrus.Fatalf("unable to create fsnotify watcher: %v", err)
 	}
 	if err := os.Mkdir(ip.getImageDir(), os.FileMode(0755)); err != nil {
 		if !os.IsExist(err) {
+			ip.errChan <- err
 			logrus.Errorf("error creating watching dir %s: %v", ip.getImageDir(), err)
 		}
 	}
 	err = watcher.Add(ip.getImageDir())
 	if err != nil {
+		ip.errChan <- err
 		logrus.Fatalf("unable to add image base directory to fsnotify watcher: %v", err)
 	}
 	ip.watcher = watcher
@@ -110,6 +115,7 @@ func (ip *ImageProcessor) watchDate(notifier chan string) {
 		logrus.Infof("New day %s; changing current watch folder to: %s\n", newDate, ip.getImageDir())
 		if err := os.Mkdir(ip.getImageDir(), os.FileMode(0755)); err != nil {
 			if !os.IsExist(err) {
+				ip.errChan <- err
 				logrus.Errorf("error creating dir %s: %v", ip.getImageDir(), err)
 			}
 		}
@@ -120,6 +126,7 @@ func (ip *ImageProcessor) watchDate(notifier chan string) {
 			ip.watcher.Remove(curList[0])
 		}
 		if err := ip.watcher.Add(ip.getImageDir()); err != nil {
+			ip.errChan <- err
 			logrus.Errorf("error adding new watched dir %s: %v", ip.getImageDir(), err)
 		}
 	}
@@ -153,6 +160,7 @@ func (ip *ImageProcessor) getImageDir() string {
 func (ip *ImageProcessor) enfuseImages(dir string) {
 	out, err := util.RunCommand(dir, enfuseCmd)
 	if err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error calling enfuse on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
 	}
@@ -161,6 +169,7 @@ func (ip *ImageProcessor) enfuseImages(dir string) {
 func (ip *ImageProcessor) overlayImage(dir string) {
 	tempStr, err := ip.weatherService.GetCurrentTempStr()
 	if err != nil {
+		ip.errChan <- fmt.Errorf("can't retrieve temp: %w", err)
 		logrus.Errorf("can't get temp: %v", err)
 		tempStr = ""
 	}
@@ -174,6 +183,7 @@ func (ip *ImageProcessor) overlayImage(dir string) {
 	overlayCmdCopy[7] = replaceNNNN.ReplaceAllLiteralString(overlayCmdCopy[7], tempStr)
 	out, err := util.RunCommand(dir, overlayCmdCopy)
 	if err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error calling convert on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
 	}
@@ -184,6 +194,7 @@ func (ip *ImageProcessor) copyImagetoS3(dir string) {
 	awscpCmd[3] = path.Join(dir, "final.jpg")
 	out, err := util.RunCommand(ip.todayService.GetHomeDirectory(), append(awscpCmd, expiresTime.Format(http.TimeFormat)))
 	if err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error calling aws cp on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
 	}
@@ -195,15 +206,18 @@ func (ip *ImageProcessor) assessDarkPercent(dir string) {
 	assessCmdCopy[5] = replaceNNNN.ReplaceAllLiteralString(assessCmdCopy[5], dir)
 	out, err := util.RunCommand(dir, assessCmdCopy)
 	if err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error calling opencv2 container on %s: %v", dir, err)
 		logrus.Errorf("Full output: %s", out)
 		return
 	}
 	if err = os.WriteFile(path.Join(dir, "colors.json"), []byte(out), 0644); err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error writing color JSON output to file: %v", err)
 	}
 	var colorJson ColorJson
 	if err = json.Unmarshal([]byte(out), &colorJson); err != nil {
+		ip.errChan <- err
 		logrus.Errorf("Error unmarshalling JSON to Go type: %v", err)
 		return
 	}

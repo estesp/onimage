@@ -16,6 +16,7 @@ type Monitor struct {
 	cronitorKey string
 	cronitorId  string
 	environment string
+	errChan     chan error
 }
 
 type cparams struct {
@@ -29,7 +30,7 @@ type fparams struct {
 	Environment string `url:"env,omitempty"`
 }
 
-func NewMonitorService(config map[string]interface{}) (*Monitor, error) {
+func NewMonitorService(config map[string]interface{}, errChan chan error) (*Monitor, error) {
 
 	enabled, err := util.GetBoolFromConfig(config, "cronitor.enabled")
 	if err != nil {
@@ -59,7 +60,8 @@ func NewMonitorService(config map[string]interface{}) (*Monitor, error) {
 		cronitorKey: appId,
 		cronitorId:  cronitorId,
 		environment: env,
-		enabled:     true,
+		enabled:     enabled,
+		errChan:     errChan,
 	}
 
 	return mon, nil
@@ -79,6 +81,9 @@ func (m *Monitor) StartCronitorPing() {
 }
 
 func (m *Monitor) sendHeartbeat() error {
+	if !m.enabled {
+		return nil
+	}
 
 	client := http.DefaultClient
 	urlBase := fmt.Sprintf("%s%s/%s", m.cronitorURL, m.cronitorKey, m.cronitorId)
@@ -100,6 +105,9 @@ func (m *Monitor) sendHeartbeat() error {
 }
 
 func (m *Monitor) SendFailure(msg string) error {
+	if !m.enabled {
+		return nil
+	}
 
 	client := http.DefaultClient
 	urlBase := fmt.Sprintf("%s%s/%s", m.cronitorURL, m.cronitorKey, m.cronitorId)

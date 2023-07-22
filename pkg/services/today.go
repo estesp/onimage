@@ -28,6 +28,7 @@ type Today struct {
 	pageTemplateName    string
 	offlinePageTemplate string
 	offline             bool
+	errChan             chan error
 }
 
 type PageData struct {
@@ -41,7 +42,7 @@ var (
 		"--content-type", "text/html", "--metadata-directive", "REPLACE", "--expires"}
 )
 
-func NewTodayService(wdService *WeatherData, config map[string]interface{}) (*Today, error) {
+func NewTodayService(wdService *WeatherData, config map[string]interface{}, errChan chan error) (*Today, error) {
 
 	dateStr := util.GetDateString()
 
@@ -70,12 +71,14 @@ func NewTodayService(wdService *WeatherData, config map[string]interface{}) (*To
 		pageTemplateName:    filepath.Base(pageTmpl),
 		pageTemplate:        template.Must(template.ParseFiles(pageTmpl)),
 		offlinePageTemplate: offlinePageTmpl,
+		errChan:             errChan,
 	}
 
 	awscpIndexCmd[4] = fmt.Sprintf("s3://%s/index.html", s3bucketName)
 
 	weather, err := wdService.GetCurrentWeather()
 	if err != nil {
+		errChan <- err
 		return nil, err
 	}
 	today.sunrise = weather.Sys.Sunrise
@@ -128,22 +131,27 @@ func (t *Today) SetTodayPage() error {
 	}
 	tmpFile, err := os.CreateTemp("/tmp", "index")
 	if err != nil {
+		t.errChan <- err
 		return errors.Wrap(err, "unable to create temp file for index page generation")
 	}
 	writer := bufio.NewWriter(tmpFile)
 	if err := t.pageTemplate.ExecuteTemplate(writer, t.pageTemplateName, data); err != nil {
+		t.errChan <- err
 		return errors.Wrap(err, "unable to execute template for index page")
 	}
 	if err := writer.Flush(); err != nil {
+		t.errChan <- err
 		return errors.Wrap(err, "unable to flush bytes to temp file")
 	}
 	if err := tmpFile.Close(); err != nil {
+		t.errChan <- err
 		return errors.Wrap(err, "unable to close temp file")
 	}
 
 	awscpIndexCmd[3] = tmpFile.Name()
 	out, err := util.RunCommand(t.homeDir, append(awscpIndexCmd, expires))
 	if err != nil {
+		t.errChan <- err
 		logrus.Errorf("Error calling 'aws cp' from tmp file %s to S3: %v", tmpFile.Name(), err)
 		logrus.Errorf(">      Command: %s", strings.Join(awscpIndexCmd, " "))
 		logrus.Errorf(">  Full output: %s", out)
@@ -162,15 +170,14 @@ func (t *Today) SetOnline() error {
 }
 
 // WatchDate starts a goroutine that triggers the daily update of the index page
-func (t *Today) WatchDate() (chan string, chan error) {
+func (t *Today) WatchDate() chan string {
 	dayNotifier := make(chan string)
-	errNotifier := make(chan error)
 
-	go t.watchDate(dayNotifier, errNotifier)
-	return dayNotifier, errNotifier
+	go t.watchDate(dayNotifier)
+	return dayNotifier
 }
 
-func (t *Today) watchDate(notifier chan string, errors chan error) {
+func (t *Today) watchDate(notifier chan string) {
 	tick := time.NewTicker(15 * time.Minute)
 	for {
 		select {
@@ -181,13 +188,13 @@ func (t *Today) watchDate(notifier chan string, errors chan error) {
 				w, err := t.weatherService.GetCurrentWeather()
 				if err != nil {
 					logrus.Errorf("error retrieving sunrise/sunset for new day: %v", err)
-					errors <- err
+					t.errChan <- err
 				} else {
 					t.sunrise = w.Sys.Sunrise
 					t.sunset = w.Sys.Sunset
 					if err := t.SetTodayPage(); err != nil {
 						logrus.Errorf("unable to setup index.html for new day: %v", err)
-						errors <- err
+						t.errChan <- err
 					}
 				}
 				notifier <- t.dateStr
