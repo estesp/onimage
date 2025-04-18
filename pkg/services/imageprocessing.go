@@ -150,6 +150,10 @@ func (ip *ImageProcessor) watchDate(notifier chan string) {
 func (ip *ImageProcessor) processImages() {
 	newDirs := make(chan string)
 	readyDirs := make(chan string)
+	tempUnit := "F"
+	if ip.weatherService.units == "metric" {
+		tempUnit = "C"
+	}
 	go listen(ip.watcher, newDirs)
 	go handleNewDirs(newDirs, readyDirs)
 
@@ -158,7 +162,7 @@ func (ip *ImageProcessor) processImages() {
 		// create final image (enfuse)
 		ip.enfuseImages(dir)
 		// overlay text: date/time, temp
-		ip.overlayImage(dir)
+		ip.overlayImage(dir, tempUnit)
 		// copy latest to S3 bucket for kwcam.live
 		ip.copyImagetoS3(dir)
 		// assess percent dark in image; run as goroutine since it can take 30s to run
@@ -181,14 +185,14 @@ func (ip *ImageProcessor) enfuseImages(dir string) {
 	}
 }
 
-func (ip *ImageProcessor) overlayImage(dir string) {
+func (ip *ImageProcessor) overlayImage(dir string, tempUnit string) {
 	tempStr, err := ip.weatherService.GetCurrentTempStr()
 	if err != nil {
 		ip.errChan <- fmt.Errorf("can't retrieve temp: %w", err)
 		logrus.Errorf("can't get temp: %v", err)
 		tempStr = ""
 	}
-	tempStr = fmt.Sprintf("%s°F", tempStr)
+	tempStr = fmt.Sprintf("%s°%s", tempStr, tempUnit)
 	timeStr := util.DatetimeFromDir(dir)
 	logrus.Infof("timestamp for image: %s", timeStr)
 	logrus.Infof("current temp value: %s", tempStr)
