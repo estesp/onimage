@@ -35,12 +35,14 @@ func main() {
 	}
 	// start ping service to send heartbeats to cronitor
 	go monitorService.StartCronitorPing()
+	logrus.Info(" > monitor service started successfully")
 
 	// create weather service
 	weatherService, err := services.NewWeatherDataService(config, errChan)
 	if err != nil {
 		logrus.Fatalf("unable to initialize weather data service: %v", err)
 	}
+	logrus.Info(" > weather service started successfully")
 
 	// create "today" service which handles storing sunrise/sunset and current date
 	// as well as updating the S3 bucket's "index.html" with today's data
@@ -49,8 +51,11 @@ func main() {
 		logrus.Fatalf("unable to initialize 'today' service: %v", err)
 	}
 
-	todayService.SetTodayPage()
+	if err = todayService.SetTodayPage(); err != nil {
+		logrus.Fatalf("unable to set the initial today page view in s3: %v", err)
+	}
 	dateNotifier := todayService.WatchDate()
+	logrus.Info(" > today page service started successfully")
 
 	// start the web endpoint service which is called from cron entry
 	// scripts that take the photos; used to determine whether to take
@@ -58,6 +63,7 @@ func main() {
 	webEndpointService := services.NewWebEndpoint(todayService)
 
 	webEndpointService.StartWebHandler()
+	logrus.Info(" > endpoint for photo time capture service started successfully")
 
 	// all dependent services are started; now start image processing
 
