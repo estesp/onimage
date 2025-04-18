@@ -34,7 +34,7 @@ func main() {
 		logrus.Fatalf("unable to initialize monitoring service: %v", err)
 	}
 	// start ping service to send heartbeats to cronitor
-	go monitorService.StartCronitorPing()
+	go monitorService.StartPing()
 	logrus.Info(" > monitor service started successfully")
 
 	// create weather service
@@ -85,7 +85,7 @@ func main() {
 	errorHandler(errChan, monitorService)
 }
 
-func errorHandler(errors chan error, monitor *services.Monitor) {
+func errorHandler(errors chan error, monitor services.Monitor) {
 	for {
 		err := <-errors
 		monitor.SendFailure(fmt.Sprintf("%v", err))
