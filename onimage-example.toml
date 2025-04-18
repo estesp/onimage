@@ -28,6 +28,17 @@ heartbeat_id = "onimage-service"
 # [OPTIONAL] environment string; if you use Cronitor's multi-environment settings
 environment = "kw-testing"
 
+# The [hyperping] section has settings related to the optional use of the
+# monitoring service from Hyperping.io. If you do not wish to have SaaS
+# monitoring from Hyperping.io, you can simply put "enabled = false" as
+# the only setting in this section.
+[hyperping]
+enabled = false
+base_url = "https://hc.hyperping.io"
+# When you create a healthcheck with Hyperping it will provide a URL path
+# that you can then provide as the key here in settings
+key = ""
+
 # The [weather] section holds configuration for OpenWeatherMap's Weather
 # data API. The location code for your specific city/town/region can be
 # found on their documentation site. You need to create a (free) account

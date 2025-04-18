@@ -1,0 +1,17 @@
+[Unit]
+Description=OnImage Image Processing Service
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/onimage
+WorkingDirectory=/home/someuser
+User=username  # User to run as (for security)
+Group=groupname
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=network-online.target
